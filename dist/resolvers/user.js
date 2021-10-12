@@ -48,11 +48,11 @@ FieldError = __decorate([
 let UserResponse = class UserResponse {
 };
 __decorate([
-    (0, type_graphql_1.Field)(() => FieldError, { nullable: true }),
+    (0, type_graphql_1.Field)(() => [FieldError], { nullable: true }),
     __metadata("design:type", Array)
 ], UserResponse.prototype, "errors", void 0);
 __decorate([
-    (0, type_graphql_1.Field)(),
+    (0, type_graphql_1.Field)(() => User_1.User, { nullable: true }),
     __metadata("design:type", User_1.User)
 ], UserResponse.prototype, "user", void 0);
 UserResponse = __decorate([
@@ -60,27 +60,74 @@ UserResponse = __decorate([
 ], UserResponse);
 let userResolver = class userResolver {
     async register(options, { em }) {
+        if (options.username.length <= 2) {
+            return {
+                errors: [
+                    {
+                        field: "username",
+                        message: "length must be greater than 2",
+                    },
+                ],
+            };
+        }
+        if (options.password.length <= 5) {
+            return {
+                errors: [
+                    {
+                        field: "password",
+                        message: "length must be greater than 5",
+                    },
+                ],
+            };
+        }
         const hashedPassword = await argon2_1.default.hash(options.password);
-        const user = await em.create(User_1.User, {
+        const user = em.create(User_1.User, {
             username: options.username,
             password: hashedPassword,
         });
-        return user;
+        try {
+            await em.persistAndFlush(user);
+        }
+        catch (error) {
+            if (error.code === "23505" || error.detail.includes("already exists")) {
+                return {
+                    errors: [
+                        {
+                            field: "username",
+                            message: "username already taken",
+                        },
+                    ],
+                };
+            }
+            console.log(error);
+        }
+        return { user };
     }
     async login(options, { em }) {
         const user = await em.findOne(User_1.User, { username: options.username });
         if (!user) {
-            return;
+            return {
+                errors: [{ field: "username", message: "that username dosen't exist" }],
+            };
         }
-        const isMatch = await argon2_1.default.verify(user.password, options.password);
-        if (!isMatch) {
-            return;
+        const valid = await argon2_1.default.verify(user.password, options.password);
+        if (!valid) {
+            return {
+                errors: [
+                    {
+                        field: "password",
+                        message: "incorrect passowrd",
+                    },
+                ],
+            };
         }
-        return user;
+        return {
+            user,
+        };
     }
 };
 __decorate([
-    (0, type_graphql_1.Mutation)(() => User_1.User),
+    (0, type_graphql_1.Mutation)(() => UserResponse),
     __param(0, (0, type_graphql_1.Arg)("options")),
     __param(1, (0, type_graphql_1.Ctx)()),
     __metadata("design:type", Function),
@@ -88,7 +135,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], userResolver.prototype, "register", null);
 __decorate([
-    (0, type_graphql_1.Mutation)(() => User_1.User, { nullable: true }),
+    (0, type_graphql_1.Mutation)(() => UserResponse),
     __param(0, (0, type_graphql_1.Arg)("options")),
     __param(1, (0, type_graphql_1.Ctx)()),
     __metadata("design:type", Function),

@@ -31,45 +31,100 @@ class FieldError {
 
 @ObjectType()
 class UserResponse {
-  @Field(() => FieldError, { nullable: true })
+  @Field(() => [FieldError], { nullable: true })
   errors?: FieldError[];
 
-  @Field()
+  @Field(() => User, { nullable: true })
   user?: User;
 }
 
 @Resolver()
 export class userResolver {
-  @Mutation(() => User)
+  @Mutation(() => UserResponse)
   async register(
     @Arg("options") options: UsernamePasswordInput,
     @Ctx() { em }: MyContext
-  ) {
+  ): Promise<UserResponse> {
+    //validate for the username
+    if (options.username.length <= 2) {
+      return {
+        errors: [
+          {
+            field: "username",
+            message: "length must be greater than 2",
+          },
+        ],
+      };
+    }
+
+    //validate for the password
+    if (options.password.length <= 5) {
+      return {
+        errors: [
+          {
+            field: "password",
+            message: "length must be greater than 5",
+          },
+        ],
+      };
+    }
+
+    //hashing password
     const hashedPassword = await argon2.hash(options.password);
 
-    const user: User | null = await em.create(User, {
+    //creating user instance
+    const user = em.create(User, {
       username: options.username,
       password: hashedPassword,
     });
-    return user;
+
+    // duplicate username error
+    try {
+      //saving the user in DB.
+      await em.persistAndFlush(user);
+    } catch (error) {
+      if (error.code === "23505" || error.detail.includes("already exists")) {
+        return {
+          errors: [
+            {
+              field: "username",
+              message: "username already taken",
+            },
+          ],
+        };
+      }
+      console.log(error);
+    }
+    return { user };
   }
 
-  @Mutation(() => User, { nullable: true })
+  @Mutation(() => UserResponse)
   async login(
     @Arg("options") options: UsernamePasswordInput,
     @Ctx() { em }: MyContext
-  ) {
+  ): Promise<UserResponse> {
     const user = await em.findOne(User, { username: options.username });
     if (!user) {
-      return;
+      return {
+        errors: [{ field: "username", message: "that username dosen't exist" }],
+      };
     }
 
-    const isMatch = await argon2.verify(user.password, options.password);
+    const valid = await argon2.verify(user.password, options.password);
 
-    if (!isMatch) {
-      return;
+    if (!valid) {
+      return {
+        errors: [
+          {
+            field: "password",
+            message: "incorrect passowrd",
+          },
+        ],
+      };
     }
 
-    return user;
+    return {
+      user,
+    };
   }
 }

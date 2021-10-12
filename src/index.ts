@@ -3,7 +3,7 @@ import { MikroORM } from "@mikro-orm/core";
 import { ApolloServer } from "apollo-server-express";
 import express from "express";
 import { buildSchema } from "type-graphql";
-
+import { ApolloServerPluginLandingPageGraphQLPlayground } from "apollo-server-core";
 import microConfig from "./mikro-orm.config";
 import { PostResolver } from "./resolvers/post";
 import { userResolver } from "./resolvers/user";
@@ -15,6 +15,7 @@ const main = async () => {
   const app = express();
 
   const apolloServer = new ApolloServer({
+    plugins: [ApolloServerPluginLandingPageGraphQLPlayground],
     schema: await buildSchema({
       resolvers: [PostResolver, userResolver],
       validate: false,
