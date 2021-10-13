@@ -7,10 +7,18 @@ import {
   InputType,
   Mutation,
   ObjectType,
+  Query,
   Resolver,
 } from "type-graphql";
 
 import { User } from "../entities/User";
+
+// this so we can add anything to the session object in req:Request.
+declare module "express-session" {
+  interface SessionData {
+    [key: string]: any;
+  }
+}
 
 @InputType()
 class UsernamePasswordInput {
@@ -40,10 +48,22 @@ class UserResponse {
 
 @Resolver()
 export class userResolver {
+  @Query(() => User, { nullable: true })
+  async me(@Ctx() { req, em }: MyContext): Promise<User | null> {
+    console.log(req.session);
+    if (!req.session.userId) {
+      return null;
+    }
+
+    const user = await em.findOne(User, { id: req.session.userId });
+
+    return user;
+  }
+
   @Mutation(() => UserResponse)
   async register(
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { em }: MyContext
+    @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
     //validate for the username
     if (options.username.length <= 2) {
@@ -95,13 +115,18 @@ export class userResolver {
       }
       console.log(error);
     }
+
+    //this will set cookie right after successfull account creatation
+    //will keep user loggedin
+    req.session.userId = user.id;
+
     return { user };
   }
 
   @Mutation(() => UserResponse)
   async login(
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { em }: MyContext
+    @Ctx() { em, req }: MyContext
   ): Promise<UserResponse> {
     const user = await em.findOne(User, { username: options.username });
     if (!user) {
@@ -122,6 +147,8 @@ export class userResolver {
         ],
       };
     }
+
+    req.session.userId = user.id;
 
     return {
       user,
